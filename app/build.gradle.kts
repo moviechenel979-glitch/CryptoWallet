@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 android {
     namespace = "com.cryptovault"
@@ -14,11 +15,6 @@ android {
     }
     buildFeatures { compose = true; buildConfig = true }
 
-    // Release signing is sourced from environment variables / gradle properties so no
-    // secrets ever need to be committed to the repo. In CI these are populated from
-    // GitHub Actions secrets (see .github/workflows/build.yml). Locally, set them in
-    // your shell or in ~/.gradle/gradle.properties (never in this file or local.properties
-    // if that file is committed).
     val storeFilePath = providers.gradleProperty("RELEASE_STORE_FILE").orElse(System.getenv("RELEASE_STORE_FILE") ?: "").get()
     val storePwd = providers.gradleProperty("RELEASE_STORE_PASSWORD").orElse(System.getenv("RELEASE_STORE_PASSWORD") ?: "").get()
     val keyAliasVal = providers.gradleProperty("RELEASE_KEY_ALIAS").orElse(System.getenv("RELEASE_KEY_ALIAS") ?: "").get()
@@ -44,11 +40,8 @@ android {
             if (hasSigningConfig) {
                 signingConfig = signingConfigs.getByName("release")
             }
-            // If hasSigningConfig is false, the release APK builds unsigned — you (or
-            // apksigner manually) must sign it before it can be installed or published.
         }
     }
-    composeOptions { kotlinCompilerExtensionVersion = "1.5.15" }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

@@ -11,25 +11,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    # Trust Wallet Core is fetched from GitHub Packages, which needs credentials
-    # even for public read access. Release signing needs a keystore. Add these
-    # as repo secrets (Settings -> Secrets and variables -> Actions):
-    #   GPR_USER               -> your GitHub username
-    #   GPR_KEY                -> a GitHub token (classic PAT) with read:packages scope
-    #   RELEASE_KEYSTORE_BASE64 -> `base64 -w0 your-release.keystore` output (see below)
-    #   RELEASE_STORE_PASSWORD  -> keystore password
-    #   RELEASE_KEY_ALIAS       -> key alias inside the keystore
-    #   RELEASE_KEY_PASSWORD    -> password for that key (often same as store password)
-    #
-    # If you don't have a release keystore yet, generate one locally with:
-    #   keytool -genkeypair -v -keystore release.keystore -alias cryptovault \
-    #     -keyalg RSA -keysize 2048 -validity 10000
-    # then: base64 -w0 release.keystore   (copy the output into RELEASE_KEYSTORE_BASE64)
-    # Keep release.keystore itself OUT of git — losing it means you can never
-    # publish an update under the same app signature again.
     env:
       GPR_USER: ${{ secrets.GPR_USER }}
       GPR_KEY: ${{ secrets.GPR_KEY }}
+      RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
       RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
       RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
       RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
@@ -55,8 +40,8 @@ jobs:
         run: chmod +x gradlew
 
       - name: Decode release keystore (if configured)
-        if: ${{ secrets.RELEASE_KEYSTORE_BASE64 != '' }}
-        run: echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > "${{ env.RELEASE_STORE_FILE }}"
+        if: ${{ env.RELEASE_KEYSTORE_BASE64 != '' }}
+        run: echo "${{ env.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > "${{ env.RELEASE_STORE_FILE }}"
 
       - name: Build debug APK
         run: ./gradlew :app:assembleDebug --stacktrace
@@ -68,7 +53,7 @@ jobs:
         run: ./gradlew :app:testDebugUnitTest --stacktrace
 
       - name: Verify release APK signature (if signed)
-        if: ${{ secrets.RELEASE_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.RELEASE_KEYSTORE_BASE64 != '' }}
         run: |
           $ANDROID_HOME/build-tools/*/apksigner verify --verbose app/build/outputs/apk/release/*.apk
 

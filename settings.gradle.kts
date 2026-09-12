@@ -16,10 +16,18 @@ dependencyResolutionManagement {
             url = uri("https://maven.pkg.github.com/trustwallet/wallet-core")
             credentials {
                 username = providers.gradleProperty("gpr.user")
-                    .orElse(System.getenv("GPR_USER") ?: System.getenv("GITHUB_ACTOR") ?: "")
+                    .orElse(
+                        System.getenv("GPR_USER")?.takeIf { it.isNotBlank() }
+                            ?: System.getenv("GITHUB_ACTOR")?.takeIf { it.isNotBlank() }
+                            ?: ""
+                    )
                     .get()
                 password = providers.gradleProperty("gpr.key")
-                    .orElse(System.getenv("GPR_KEY") ?: System.getenv("GITHUB_TOKEN") ?: "")
+                    .orElse(
+                        System.getenv("GPR_KEY")?.takeIf { it.isNotBlank() }
+                            ?: System.getenv("GITHUB_TOKEN")?.takeIf { it.isNotBlank() }
+                            ?: ""
+                    )
                     .get()
             }
         }

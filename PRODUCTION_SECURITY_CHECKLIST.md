@@ -1,0 +1,19 @@
+# Production security gate
+- Independent security audit
+- Biometric/device credential immediately before decrypt/sign
+- No seed/private key in logs, analytics, clipboard or network
+- Hardware-backed Keystore where available
+- EVM chainId verification
+- Address poisoning protection
+- RPC response validation/failover
+- R8/ProGuard release hardening
+- Play Integrity / anti-tamper strategy
+- WalletConnect dApp transaction review
+- ERC-20 approval/permit warnings
+- Swap/bridge spender and slippage verification
+- Bitcoin signing/fee tests
+- Fuzz/property tests for serialization
+- Testnet integration suite
+- Tiny-funds mainnet canary
+- Reproducible signed release
+- External audit before significant funds

@@ -1,0 +1,96 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    # Trust Wallet Core is fetched from GitHub Packages, which needs credentials
+    # even for public read access. Release signing needs a keystore. Add these
+    # as repo secrets (Settings -> Secrets and variables -> Actions):
+    #   GPR_USER               -> your GitHub username
+    #   GPR_KEY                -> a GitHub token (classic PAT) with read:packages scope
+    #   RELEASE_KEYSTORE_BASE64 -> `base64 -w0 your-release.keystore` output (see below)
+    #   RELEASE_STORE_PASSWORD  -> keystore password
+    #   RELEASE_KEY_ALIAS       -> key alias inside the keystore
+    #   RELEASE_KEY_PASSWORD    -> password for that key (often same as store password)
+    #
+    # If you don't have a release keystore yet, generate one locally with:
+    #   keytool -genkeypair -v -keystore release.keystore -alias cryptovault \
+    #     -keyalg RSA -keysize 2048 -validity 10000
+    # then: base64 -w0 release.keystore   (copy the output into RELEASE_KEYSTORE_BASE64)
+    # Keep release.keystore itself OUT of git — losing it means you can never
+    # publish an update under the same app signature again.
+    env:
+      GPR_USER: ${{ secrets.GPR_USER }}
+      GPR_KEY: ${{ secrets.GPR_KEY }}
+      RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+      RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+      RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+      RELEASE_STORE_FILE: ${{ github.workspace }}/release.keystore
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Decode release keystore (if configured)
+        if: ${{ secrets.RELEASE_KEYSTORE_BASE64 != '' }}
+        run: echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > "${{ env.RELEASE_STORE_FILE }}"
+
+      - name: Build debug APK
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Build release APK
+        run: ./gradlew :app:assembleRelease --stacktrace
+
+      - name: Run unit tests
+        run: ./gradlew :app:testDebugUnitTest --stacktrace
+
+      - name: Verify release APK signature (if signed)
+        if: ${{ secrets.RELEASE_KEYSTORE_BASE64 != '' }}
+        run: |
+          $ANDROID_HOME/build-tools/*/apksigner verify --verbose app/build/outputs/apk/release/*.apk
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: cryptovault-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: cryptovault-release-apk
+          path: app/build/outputs/apk/release/*.apk
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-reports
+          path: app/build/reports/tests/
+
+      - name: Clean up keystore file
+        if: always()
+        run: rm -f "${{ env.RELEASE_STORE_FILE }}"

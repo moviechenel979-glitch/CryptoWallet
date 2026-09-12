@@ -1,0 +1,10 @@
+# Copy this file to local.properties and replace placeholders.
+# NEVER commit local.properties.
+
+# AndroidIDE may already create sdk.dir for you.
+sdk.dir=/data/data/com.itsaky.androidide/files/usr/lib/android-sdk
+
+# Required to download Trust Wallet Core from GitHub Packages.
+# Use a GitHub token with the minimum required package-read permission.
+gpr.user=YOUR_GITHUB_USERNAME
+gpr.key=YOUR_GITHUB_TOKEN

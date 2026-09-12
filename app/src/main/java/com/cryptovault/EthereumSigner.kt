@@ -2,7 +2,7 @@ package com.cryptovault
 
 import com.google.protobuf.ByteString
 import java.math.BigInteger
-import wallet.core.jni.AnySigner
+import wallet.core.java.AnySigner
 import wallet.core.jni.CoinType
 import wallet.core.jni.proto.Ethereum
 

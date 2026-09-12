@@ -1,7 +1,7 @@
 package com.cryptovault
 
 import com.google.protobuf.ByteString
-import wallet.core.jni.AnySigner
+import wallet.core.java.AnySigner
 import wallet.core.jni.BitcoinScript
 import wallet.core.jni.CoinType
 import wallet.core.jni.proto.Bitcoin
@@ -27,7 +27,7 @@ object BitcoinSigner {
             val planned = AnySigner.plan(input.build(), CoinType.BITCOIN, Bitcoin.TransactionPlan.parser())
             input.plan = planned
             val output = AnySigner.sign(input.build(), CoinType.BITCOIN, Bitcoin.SigningOutput.parser())
-            check(output.error == SigningError.OK) { "Bitcoin signing error: ${output.error}" }
+            check(output.error == SigningError.OK) { "Bitcoin signing error: " + output.error }
             val raw = output.encoded.toByteArray().joinToString("") { "%02x".format(it) }
             val txId = output.transaction.hash.toByteArray().reversedArray().joinToString("") { "%02x".format(it) }
             Signed(raw, txId)

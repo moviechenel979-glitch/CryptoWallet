@@ -1,5 +1,1 @@
-plugins {
-    id("com.android.application") version "8.7.3" apply false
-    id("org.jetbrains.kotlin.android") version "2.1.0" apply false
-    id("org.jetbrains.kotlin.plugin.compose") version "2.1.0" apply false
-}
+plugins {\n    id("com.android.application") version "8.7.3" apply false\n    id("org.jetbrains.kotlin.android") version "2.1.0" apply false\n    id("org.jetbrains.kotlin.plugin.compose") version "2.1.0" apply false\n}\n\ngradle.buildFinished { result ->\n    result.failure?.let { failure ->\n        val chain = generateSequence(failure) { it.cause }\n            .map { throwable -> "" + throwable.javaClass.simpleName + ": " + (throwable.message ?: "") }\n            .joinToString(" | ")\n            .replace("%", "%25")\n            .replace("\r", "%0D")\n            .replace("\n", "%0A")\n        logger.lifecycle("::error title=Gradle build failure::$chain")\n    }\n}\n

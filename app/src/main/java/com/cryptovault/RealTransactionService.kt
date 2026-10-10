@@ -80,7 +80,7 @@ class RealTransactionService(private val rpc: RpcClient = RpcClient()) {
         check(explicitUserConfirmation) { "Broadcast заблокирован без явного подтверждения." }
         TransactionPolicyV3.requireEvm(prepared)
         WalletSecurityPolicy.requireHttps(prepared.network.rpcUrl)
-        val words = mnemonic.trim().split(Regex("\s+"))
+        val words = mnemonic.trim().split(" ").map { it.trim() }.filter { it.isNotEmpty() }
         require(words.size in 12..24) { "Некорректная seed-фраза" }
 
         val privateKey = WalletCoreService.ethereumPrivateKey(mnemonic)

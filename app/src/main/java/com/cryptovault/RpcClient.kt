@@ -67,4 +67,5 @@ class RpcClient(private val http: OkHttpClient = OkHttpClient()) {
 
 data class TransactionReceipt(val hash: String, val blockNumber: String?, val success: Boolean)
 
-private fun String.toMediaTypeCompat(): okhttp3.MediaType = okhttp3.MediaType.get(this)
+private fun String.toMediaTypeCompat(): okhttp3.MediaType =
+    okhttp3.MediaType.parse(this) ?: error("Invalid media type: $this")

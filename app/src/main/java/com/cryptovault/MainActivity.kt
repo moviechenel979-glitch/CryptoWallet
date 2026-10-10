@@ -185,8 +185,10 @@ private fun CryptoVaultApp(activity: FragmentActivity) {
                         item { Text("Сеть: ${p.network.name} (chainId ${p.network.chainId})") }
                         if (p.tokenContract != null) {
                             item { Text("Токен-контракт: ${p.tokenContract}") }
+                            item { Text("Получатель токена: ${p.recipient}") }
                             item { Text("Сумма (base units): ${p.tokenAmount}") }
                         } else {
+                            item { Text("Получатель: ${p.to}") }
                             item { Text("Сумма: $evmAmount ${if(evmNetwork==Network.BNB) "BNB" else "ETH"}") }
                         }
                         item { Text("nonce ${p.nonce}, gasLimit ${p.gasLimit}, gasPrice ${p.gasPriceWei} wei") }

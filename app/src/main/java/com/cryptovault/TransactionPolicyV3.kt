@@ -11,7 +11,12 @@ object TransactionPolicyV3 {
         require(prepared.gasLimit > BigInteger.ZERO) { "Некорректный gas limit" }
         require(prepared.gasPriceWei > BigInteger.ZERO) { "Некорректная gas price" }
         require(prepared.network.chainId > 0) { "Некорректный chain id" }
-        if (prepared.tokenContract != null) AddressValidation.requireEvm(prepared.tokenContract)
+        if (prepared.tokenContract != null) {
+            AddressValidation.requireEvm(prepared.tokenContract)
+            val recipient = prepared.recipient
+                ?: error("ERC-20 transfer must include recipient")
+            AddressValidation.requireEvm(recipient)
+        }
     }
 
     fun requireBitcoin(plan: BitcoinSendPlan) {

@@ -10,9 +10,10 @@ android {
         applicationId = "com.cryptovault"
         minSdk = 26
         targetSdk = 35
-        versionCode = 20
-        versionName = "1.0.0-rc20"
+        versionCode = 21
+        versionName = "1.0.0"
         multiDexEnabled = true
+        buildConfigField("boolean", "PRODUCTION", "true")
     }
     buildFeatures { compose = true; buildConfig = true }
 
@@ -37,10 +38,16 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            isDebuggable = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             if (hasSigningConfig) {
                 signingConfig = signingConfigs.getByName("release")
             }
+        }
+        debug {
+            isDebuggable = true
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
         }
     }
 

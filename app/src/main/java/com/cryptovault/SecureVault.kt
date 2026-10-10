@@ -5,6 +5,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import java.nio.charset.StandardCharsets
+import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -14,7 +15,8 @@ class SecureVault(context: Context) {
     private val alias = "CryptoVault_AES_KEY_v2"
 
     init {
-        if (!android.security.keystore.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.containsAlias(alias)) {
+        val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        if (!ks.containsAlias(alias)) {
             val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
             generator.init(
                 KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
@@ -28,9 +30,9 @@ class SecureVault(context: Context) {
     }
 
     private fun key(): SecretKey {
-        val ks = android.security.keystore.KeyStore.getInstance("AndroidKeyStore")
+        val ks = KeyStore.getInstance("AndroidKeyStore")
         ks.load(null)
-        return (ks.getKey(alias, null) as SecretKey)
+        return ks.getKey(alias, null) as SecretKey
     }
 
     fun encrypt(value: String): String {

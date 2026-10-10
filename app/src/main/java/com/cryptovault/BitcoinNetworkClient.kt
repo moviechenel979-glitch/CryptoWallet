@@ -2,8 +2,10 @@ package com.cryptovault
 
 import org.json.JSONArray
 import org.json.JSONObject
-import java.net.URLEncoder
 import java.net.URL
+import java.net.URLEncoder
+import wallet.core.jni.BitcoinScript
+import wallet.core.jni.CoinType
 
 /** Read-only Bitcoin provider + raw transaction broadcast. It never receives private keys. */
 class BitcoinNetworkClient {
@@ -14,24 +16,36 @@ class BitcoinNetworkClient {
         return buildList {
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
-                add(BitcoinUtxo(o.getString("txid"), o.getInt("vout"), o.getLong("value"),
-                    BitcoinScriptHelper.scriptForAddress(address)))
+                add(
+                    BitcoinUtxo(
+                        o.getString("txid"),
+                        o.getInt("vout"),
+                        o.getLong("value"),
+                        BitcoinScriptHelper.scriptForAddress(address)
+                    )
+                )
             }
         }
     }
 
     fun feeRates(network: BitcoinNetwork): FeeRates {
         val o = JSONObject(URL("${baseUrl(network)}/v1/fees/recommended").readText())
-        return FeeRates(o.optLong("fastestFee", 10).coerceAtLeast(1),
-            o.optLong("halfHourFee", 5).coerceAtLeast(1), o.optLong("hourFee", 2).coerceAtLeast(1))
+        return FeeRates(
+            o.optLong("fastestFee", 10).coerceAtLeast(1),
+            o.optLong("halfHourFee", 5).coerceAtLeast(1),
+            o.optLong("hourFee", 2).coerceAtLeast(1)
+        )
     }
 
     fun broadcast(network: BitcoinNetwork, rawTxHex: String): String {
         require(rawTxHex.matches(Regex("[0-9a-fA-F]+"))) { "Некорректный raw transaction" }
         val c = URL("${baseUrl(network)}/tx").openConnection() as java.net.HttpURLConnection
-        c.requestMethod = "POST"; c.doOutput = true; c.setRequestProperty("Content-Type", "text/plain")
+        c.requestMethod = "POST"
+        c.doOutput = true
+        c.setRequestProperty("Content-Type", "text/plain")
         c.outputStream.use { it.write(rawTxHex.toByteArray()) }
-        val body = (if (c.responseCode in 200..299) c.inputStream else c.errorStream).bufferedReader().use { it.readText() }.trim()
+        val body = (if (c.responseCode in 200..299) c.inputStream else c.errorStream)
+            .bufferedReader().use { it.readText() }.trim()
         if (c.responseCode !in 200..299) error("Bitcoin broadcast отклонён: $body")
         return body
     }
@@ -43,7 +57,14 @@ class BitcoinNetworkClient {
 }
 
 object BitcoinScriptHelper {
-    fun scriptForAddress(address: String): String =
-        wallet.core.jni.BitcoinScript.buildForAddress(address, wallet.core.jni.CoinType.BITCOIN)
-            .data().joinToString("") { "%02x".format(it) }
+    fun scriptForAddress(address: String): String {
+        // Wallet Core API: lockScriptForAddress (preferred) or buildForAddress depending on version
+        val script = try {
+            BitcoinScript.lockScriptForAddress(address, CoinType.BITCOIN)
+        } catch (_: Throwable) {
+            @Suppress("DEPRECATION")
+            BitcoinScript.buildForAddress(address, CoinType.BITCOIN)
+        }
+        return script.data().joinToString("") { b -> "%02x".format(b) }
+    }
 }

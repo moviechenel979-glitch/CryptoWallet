@@ -17,7 +17,9 @@ object BitcoinSigner {
             val input = buildInput(plan, key)
             val p = AnySigner.plan(input.build(), CoinType.BITCOIN, Bitcoin.TransactionPlan.parser())
             ExactPlan(p.fee, p.change)
-        } finally { key.fill(0) }
+        } finally {
+            key.fill(0)
+        }
     }
 
     fun sign(plan: BitcoinSendPlan, mnemonic: String): Signed {
@@ -28,10 +30,27 @@ object BitcoinSigner {
             input.plan = planned
             val output = AnySigner.sign(input.build(), CoinType.BITCOIN, Bitcoin.SigningOutput.parser())
             check(output.error == SigningError.OK) { "Bitcoin signing error: " + output.error }
-            val raw = output.encoded.toByteArray().joinToString("") { "%02x".format(it) }
-            val txId = output.transaction.hash.toByteArray().reversedArray().joinToString("") { "%02x".format(it) }
+            val rawBytes = output.encoded.toByteArray()
+            val raw = rawBytes.joinToString("") { b -> "%02x".format(b) }
+            // Prefer transactionId from output if available; otherwise derive from encoded
+            val txId = try {
+                if (output.transactionId.isNotBlank()) {
+                    output.transactionId
+                } else {
+                    // Fallback: double-SHA256 of raw tx, reversed (Bitcoin txid)
+                    val digest = java.security.MessageDigest.getInstance("SHA-256")
+                    val h1 = digest.digest(rawBytes)
+                    digest.digest(h1).reversedArray().joinToString("") { b -> "%02x".format(b) }
+                }
+            } catch (_: Throwable) {
+                val digest = java.security.MessageDigest.getInstance("SHA-256")
+                val h1 = digest.digest(rawBytes)
+                digest.digest(h1).reversedArray().joinToString("") { b -> "%02x".format(b) }
+            }
             Signed(raw, txId)
-        } finally { key.fill(0) }
+        } finally {
+            key.fill(0)
+        }
     }
 
     private fun buildInput(plan: BitcoinSendPlan, key: ByteArray): Bitcoin.SigningInput.Builder {
@@ -40,17 +59,30 @@ object BitcoinSigner {
             .setHashType(BitcoinScript.hashTypeForCoin(CoinType.BITCOIN))
             .setToAddress(plan.to)
             .setChangeAddress(plan.from)
-            .setByteFee(plan.feeRateSatVb.coerceAtLeast(1).toInt())
+            .setByteFee(plan.feeRateSatVb.coerceAtLeast(1))
             .setCoinType(CoinType.BITCOIN.value())
             .addPrivateKey(ByteString.copyFrom(key))
-        val script = BitcoinScript.buildForAddress(plan.from, CoinType.BITCOIN).data()
+
+        val scriptBytes = try {
+            BitcoinScript.lockScriptForAddress(plan.from, CoinType.BITCOIN).data()
+        } catch (_: Throwable) {
+            @Suppress("DEPRECATION")
+            BitcoinScript.buildForAddress(plan.from, CoinType.BITCOIN).data()
+        }
+
         plan.inputs.forEach { u ->
             val outpoint = Bitcoin.OutPoint.newBuilder()
                 .setHash(ByteString.copyFrom(hexToBytes(u.txid).reversedArray()))
-                .setIndex(u.vout).setSequence(-1).build()
-            input.addUtxo(Bitcoin.UnspentTransaction.newBuilder()
-                .setAmount(u.valueSats).setOutPoint(outpoint)
-                .setScript(ByteString.copyFrom(script)).build())
+                .setIndex(u.vout)
+                .setSequence(0xffffffff.toInt())
+                .build()
+            input.addUtxo(
+                Bitcoin.UnspentTransaction.newBuilder()
+                    .setAmount(u.valueSats)
+                    .setOutPoint(outpoint)
+                    .setScript(ByteString.copyFrom(scriptBytes))
+                    .build()
+            )
         }
         return input
     }

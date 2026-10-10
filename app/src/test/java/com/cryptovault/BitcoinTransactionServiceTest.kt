@@ -4,15 +4,17 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class BitcoinTransactionServiceTest {
-    @Test fun selectsEnoughUtxosAndCalculatesChange() {
+    @Test
+    fun selectsEnoughUtxosAndCalculatesChange() {
         val service = BitcoinTransactionService()
         val plan = service.prepare(
-            BitcoinNetwork.MAINNET,
-            "bc1qfrom",
-            "bc1qto",
-            100_000L,
-            5_000L,
-            listOf(
+            network = BitcoinNetwork.MAINNET,
+            from = "bc1qfrom",
+            to = "bc1qto",
+            amountSats = 100_000L,
+            feeSats = 5_000L,
+            feeRateSatVb = 1L,
+            utxos = listOf(
                 BitcoinUtxo("a", 0, 50_000L, "0014aa"),
                 BitcoinUtxo("b", 1, 70_000L, "0014bb")
             )
@@ -24,8 +26,13 @@ class BitcoinTransactionServiceTest {
     @Test(expected = IllegalArgumentException::class)
     fun insufficientFundsRejected() {
         BitcoinTransactionService().prepare(
-            BitcoinNetwork.MAINNET, "from", "to", 100_000L, 5_000L,
-            listOf(BitcoinUtxo("a", 0, 10_000L, "0014aa"))
+            network = BitcoinNetwork.MAINNET,
+            from = "from",
+            to = "to",
+            amountSats = 100_000L,
+            feeSats = 5_000L,
+            feeRateSatVb = 1L,
+            utxos = listOf(BitcoinUtxo("a", 0, 10_000L, "0014aa"))
         )
     }
 }

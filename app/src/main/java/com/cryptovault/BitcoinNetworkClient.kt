@@ -58,13 +58,7 @@ class BitcoinNetworkClient {
 
 object BitcoinScriptHelper {
     fun scriptForAddress(address: String): String {
-        // Wallet Core API: lockScriptForAddress (preferred) or buildForAddress depending on version
-        val script = try {
-            BitcoinScript.lockScriptForAddress(address, CoinType.BITCOIN)
-        } catch (_: Throwable) {
-            @Suppress("DEPRECATION")
-            BitcoinScript.buildForAddress(address, CoinType.BITCOIN)
-        }
+        val script = BitcoinScript.lockScriptForAddress(address, CoinType.BITCOIN)
         return script.data().joinToString("") { b -> "%02x".format(b) }
     }
 }

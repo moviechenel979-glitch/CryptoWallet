@@ -63,12 +63,7 @@ object BitcoinSigner {
             .setCoinType(CoinType.BITCOIN.value())
             .addPrivateKey(ByteString.copyFrom(key))
 
-        val scriptBytes = try {
-            BitcoinScript.lockScriptForAddress(plan.from, CoinType.BITCOIN).data()
-        } catch (_: Throwable) {
-            @Suppress("DEPRECATION")
-            BitcoinScript.buildForAddress(plan.from, CoinType.BITCOIN).data()
-        }
+        val scriptBytes = BitcoinScript.lockScriptForAddress(plan.from, CoinType.BITCOIN).data()
 
         plan.inputs.forEach { u ->
             val outpoint = Bitcoin.OutPoint.newBuilder()

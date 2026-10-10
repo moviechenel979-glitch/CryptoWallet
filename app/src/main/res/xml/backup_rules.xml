@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Exclude all wallet secrets from cloud/device backup -->
+    <exclude domain="sharedpref" path="wallet_secret.xml"/>
+    <exclude domain="sharedpref" path="wallet_secret"/>
+</full-backup-content>

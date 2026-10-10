@@ -6,4 +6,6 @@ object ReleaseHardening {
     const val DISABLE_CLEAR_TEXT_NETWORK = true
     const val BLOCK_SCREENSHOTS_ON_SECRET_SCREENS = true
     const val NEVER_LOG_SEED_OR_PRIVATE_KEY = true
+    const val DEFAULT_TO_TESTNET = true
+    const val REQUIRE_MAINNET_ACK = true
 }

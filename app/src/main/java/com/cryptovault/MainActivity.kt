@@ -3,13 +3,13 @@ package com.cryptovault
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.compose.setContent
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -24,37 +24,47 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
 import java.util.concurrent.Executors
 
-private val VaultBg = Color(0xFF0B0F1A)
-private val VaultSurface = Color(0xFF141A2A)
-private val VaultCard = Color(0xFF1A2236)
-private val VaultAccent = Color(0xFF6C8CFF)
-private val VaultAccent2 = Color(0xFF00D4AA)
-private val VaultDanger = Color(0xFFFF6B6B)
-private val VaultMuted = Color(0xFF8B95A8)
-private val VaultText = Color(0xFFF2F5FF)
+/* ── Premium dark palette ─────────────────────────────────────────── */
+private val Bg = Color(0xFF080B12)
+private val Surface1 = Color(0xFF0F131C)
+private val Surface2 = Color(0xFF161B27)
+private val Surface3 = Color(0xFF1C2333)
+private val Stroke = Color(0xFF2A3347)
+private val TextPrimary = Color(0xFFF7F8FC)
+private val TextSecondary = Color(0xFF9AA3B5)
+private val TextTertiary = Color(0xFF6B7385)
+private val Accent = Color(0xFF5B8CFF)
+private val AccentSoft = Color(0xFF5B8CFF).copy(alpha = 0.14f)
+private val Success = Color(0xFF3DDC97)
+private val Warning = Color(0xFFFFC857)
+private val Danger = Color(0xFFFF5C6C)
+private val Btc = Color(0xFFF7931A)
+private val Eth = Color(0xFF8A9CFF)
+private val Bnb = Color(0xFFF0B90B)
 
-private val VaultColors = darkColorScheme(
-    primary = VaultAccent,
+private val Scheme = darkColorScheme(
+    primary = Accent,
     onPrimary = Color.White,
-    secondary = VaultAccent2,
-    onSecondary = Color.Black,
-    background = VaultBg,
-    onBackground = VaultText,
-    surface = VaultSurface,
-    onSurface = VaultText,
-    surfaceVariant = VaultCard,
-    onSurfaceVariant = VaultMuted,
-    error = VaultDanger,
-    outline = Color(0xFF2A3548)
+    secondary = Success,
+    background = Bg,
+    onBackground = TextPrimary,
+    surface = Surface1,
+    onSurface = TextPrimary,
+    surfaceVariant = Surface2,
+    onSurfaceVariant = TextSecondary,
+    error = Danger,
+    outline = Stroke
 )
 
 class MainActivity : FragmentActivity() {
@@ -62,14 +72,8 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         setContent {
-            MaterialTheme(
-                colorScheme = VaultColors,
-                typography = Typography(
-                    headlineLarge = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
-                    titleLarge = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold)
-                )
-            ) {
-                Surface(Modifier.fillMaxSize(), color = VaultBg) {
+            MaterialTheme(colorScheme = Scheme) {
+                Surface(Modifier.fillMaxSize(), color = Bg) {
                     CryptoVaultApp(this)
                 }
             }
@@ -78,11 +82,10 @@ class MainActivity : FragmentActivity() {
 }
 
 private enum class Tab(val label: String, val icon: ImageVector) {
-    Portfolio("Портфель", Icons.Default.AccountBalanceWallet),
-    Send("BTC", Icons.Default.Toll),
-    Evm("EVM", Icons.AutoMirrored.Filled.Send),
-    Receive("Получить", Icons.Default.QrCode2),
-    Settings("Ещё", Icons.Default.Settings)
+    Home("Home", Icons.Default.AccountBalanceWallet),
+    Send("Send", Icons.AutoMirrored.Filled.Send),
+    Receive("Receive", Icons.Default.SouthWest),
+    Settings("Settings", Icons.Default.Settings)
 }
 
 @Composable
@@ -91,7 +94,11 @@ private fun CryptoVaultApp(activity: FragmentActivity) {
     val metadata = remember { WalletMetadataStore(activity) }
     val biometric = remember { BiometricGate(activity) }
     val executor = remember { Executors.newSingleThreadExecutor() }
-    var tab by remember { mutableStateOf(Tab.Portfolio) }
+    val txService = remember { RealTransactionService() }
+    val tokenService = remember { TokenService() }
+
+    var tab by remember { mutableStateOf(Tab.Home) }
+    var sendAsset by remember { mutableStateOf("ETH") }
     var addresses by remember { mutableStateOf(metadata.load()) }
     var mnemonic by remember { mutableStateOf("") }
     var notice by remember { mutableStateOf<String?>(null) }
@@ -109,8 +116,6 @@ private fun CryptoVaultApp(activity: FragmentActivity) {
     var tokenContract by remember { mutableStateOf("") }
     var tokenDecimals by remember { mutableStateOf<Int?>(null) }
     var busy by remember { mutableStateOf(false) }
-    val txService = remember { RealTransactionService() }
-    val tokenService = remember { TokenService() }
     val snackbar = remember { SnackbarHostState() }
 
     LaunchedEffect(notice) {
@@ -122,14 +127,16 @@ private fun CryptoVaultApp(activity: FragmentActivity) {
 
     fun createWallet() {
         busy = true
-        runCatching { WalletCoreService.create() }.onSuccess { (seed, a) ->
-            secretStore.saveMnemonic(seed)
-            metadata.save(a)
-            addresses = a
-            mnemonic = seed
-            showSeed = true
-            notice = "Кошелёк создан. Сохраните seed в безопасном месте."
-        }.onFailure { notice = it.message ?: "Ошибка создания" }
+        runCatching { WalletCoreService.create() }
+            .onSuccess { (seed, a) ->
+                secretStore.saveMnemonic(seed)
+                metadata.save(a)
+                addresses = a
+                mnemonic = seed
+                showSeed = true
+                notice = "Wallet created. Back up your seed phrase."
+            }
+            .onFailure { notice = it.message ?: "Create failed" }
         busy = false
     }
 
@@ -143,41 +150,51 @@ private fun CryptoVaultApp(activity: FragmentActivity) {
             }
         }.onSuccess {
             importSeed = ""
-            notice = "Кошелёк восстановлен"
-        }.onFailure { notice = it.message ?: "Неверная seed-фраза" }
+            notice = "Wallet restored"
+        }.onFailure { notice = it.message ?: "Invalid seed phrase" }
         busy = false
     }
 
     Scaffold(
-        containerColor = VaultBg,
+        containerColor = Bg,
         snackbarHost = {
             SnackbarHost(snackbar) { data ->
                 Snackbar(
                     snackbarData = data,
-                    containerColor = VaultCard,
-                    contentColor = VaultText,
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(16.dp),
+                    containerColor = Surface3,
+                    contentColor = TextPrimary,
+                    modifier = Modifier.padding(16.dp)
                 )
             }
         },
         bottomBar = {
             NavigationBar(
-                containerColor = VaultSurface,
+                containerColor = Surface1,
                 tonalElevation = 0.dp,
-                modifier = Modifier.border(1.dp, Color(0xFF1E2A3D))
+                modifier = Modifier
+                    .border(BorderStroke(1.dp, Stroke.copy(alpha = 0.6f)))
             ) {
                 Tab.entries.forEach { item ->
+                    val selected = tab == item
+                    val tint by animateColorAsState(
+                        if (selected) Accent else TextTertiary,
+                        label = "nav"
+                    )
                     NavigationBarItem(
-                        selected = tab == item,
+                        selected = selected,
                         onClick = { tab = item },
-                        icon = { Icon(item.icon, contentDescription = item.label) },
-                        label = { Text(item.label, fontSize = 11.sp) },
+                        icon = { Icon(item.icon, contentDescription = item.label, tint = tint) },
+                        label = {
+                            Text(
+                                item.label,
+                                fontSize = 11.sp,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                color = tint
+                            )
+                        },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = VaultAccent,
-                            selectedTextColor = VaultAccent,
-                            unselectedIconColor = VaultMuted,
-                            unselectedTextColor = VaultMuted,
-                            indicatorColor = VaultAccent.copy(alpha = 0.15f)
+                            indicatorColor = AccentSoft
                         )
                     )
                 }
@@ -189,380 +206,420 @@ private fun CryptoVaultApp(activity: FragmentActivity) {
                 .fillMaxSize()
                 .padding(pad)
                 .padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            contentPadding = PaddingValues(top = 16.dp, bottom = 28.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(top = 12.dp, bottom = 32.dp)
         ) {
-            item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        Modifier
-                            .size(40.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(
-                                Brush.linearGradient(listOf(VaultAccent, VaultAccent2))
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Default.Shield, null, tint = Color.White, modifier = Modifier.size(22.dp))
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Text("CryptoVault", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = VaultText)
-                        Text("Self-custody · локальная подпись", color = VaultMuted, fontSize = 13.sp)
-                    }
-                }
-            }
+            item { TopBar() }
 
             when (tab) {
-                Tab.Portfolio -> {
+                Tab.Home -> {
                     if (addresses == null) {
+                        item { OnboardingCard() }
                         item {
-                            HeroCard(
-                                title = "Добро пожаловать",
-                                subtitle = "Создайте новый кошелёк или восстановите из seed-фразы. Ключи шифруются на устройстве."
-                            )
+                            CtaButton("Create new wallet", enabled = !busy, onClick = ::createWallet)
+                        }
+                        item { DividerLabel("Already have a wallet?") }
+                        item {
+                            VaultField(importSeed, { importSeed = it }, "Seed phrase", singleLine = false)
                         }
                         item {
-                            PrimaryButton("Создать кошелёк", enabled = !busy, onClick = ::createWallet)
-                        }
-                        item {
-                            SectionLabel("Или восстановить")
-                        }
-                        item {
-                            VaultTextField(
-                                value = importSeed,
-                                onValueChange = { importSeed = it },
-                                label = "Seed-фраза (12–24 слова)",
-                                singleLine = false
-                            )
-                        }
-                        item {
-                            SecondaryButton(
-                                "Восстановить",
+                            GhostButton(
+                                "Restore wallet",
                                 enabled = importSeed.isNotBlank() && !busy,
                                 onClick = ::restoreWallet
                             )
                         }
                     } else {
+                        item { PortfolioHeader() }
+                        item { DividerLabel("Assets") }
                         item {
-                            BalanceHero()
+                            AssetTile("BTC", "Bitcoin", addresses!!.btc, Btc) {
+                                sendAsset = "BTC"; tab = Tab.Send
+                            }
                         }
-                        item { SectionLabel("Активы") }
-                        item { AssetRow("BTC", "Bitcoin", addresses!!.btc, Color(0xFFF7931A)) }
-                        item { AssetRow("ETH", "Ethereum", addresses!!.eth, Color(0xFF627EEA)) }
-                        item { AssetRow("BNB", "BNB Chain", addresses!!.bnb, Color(0xFFF3BA2F)) }
+                        item {
+                            AssetTile("ETH", "Ethereum", addresses!!.eth, Eth) {
+                                sendAsset = "ETH"; evmNetwork = Network.ETHEREUM; tab = Tab.Send
+                            }
+                        }
+                        item {
+                            AssetTile("BNB", "BNB Smart Chain", addresses!!.bnb, Bnb) {
+                                sendAsset = "BNB"; evmNetwork = Network.BNB; tab = Tab.Send
+                            }
+                        }
                         item {
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Box(Modifier.weight(1f)) {
-                                    PrimaryButton("Отправить BTC", onClick = { tab = Tab.Send })
+                                    CtaButton("Send") { tab = Tab.Send }
                                 }
                                 Box(Modifier.weight(1f)) {
-                                    SecondaryButton("Отправить EVM", onClick = { tab = Tab.Evm })
+                                    GhostButton("Receive") { tab = Tab.Receive }
                                 }
                             }
                         }
                         if (showSeed && mnemonic.isNotBlank()) {
-                            item {
-                                WarningCard("Сохраните seed. Он больше не будет показан без биометрии.")
-                            }
-                            item {
-                                SeedBox(mnemonic)
-                            }
+                            item { AlertBanner("Write down this seed. Anyone with it controls your funds.") }
+                            item { SeedPanel(mnemonic) }
                         }
                     }
                 }
 
                 Tab.Receive -> {
-                    item { SectionLabel("Ваши адреса") }
+                    item { DividerLabel("Receive addresses") }
                     addresses?.let { a ->
-                        item { AddressCard("Bitcoin", a.btc, Color(0xFFF7931A)) }
-                        item { AddressCard("Ethereum", a.eth, Color(0xFF627EEA)) }
-                        item { AddressCard("BNB Smart Chain", a.bnb, Color(0xFFF3BA2F)) }
+                        item { AddressPanel("Bitcoin", a.btc, Btc) }
+                        item { AddressPanel("Ethereum", a.eth, Eth) }
+                        item { AddressPanel("BNB Smart Chain", a.bnb, Bnb) }
                         item {
                             Text(
-                                "Отправляйте только совместимые активы на соответствующий адрес.",
-                                color = VaultMuted,
-                                fontSize = 13.sp
+                                "Only send matching assets to each address. Wrong network can mean permanent loss.",
+                                color = TextTertiary,
+                                fontSize = 12.sp,
+                                lineHeight = 18.sp
                             )
                         }
-                    } ?: item {
-                        WarningCard("Сначала создайте или восстановите кошелёк.")
-                    }
+                    } ?: item { AlertBanner("Create or restore a wallet first.") }
                 }
 
                 Tab.Send -> {
-                    item { SectionLabel("Bitcoin · Mainnet") }
-                    item {
-                        VaultTextField(btcRecipient, { btcRecipient = it }, "Адрес получателя")
-                    }
-                    item {
-                        VaultTextField(btcAmount, { btcAmount = it }, "Сумма (BTC)")
-                    }
-                    item {
-                        PrimaryButton(
-                            "Подготовить",
-                            enabled = addresses != null && btcRecipient.isNotBlank() && btcAmount.toDoubleOrNull() != null && !busy
-                        ) {
-                            val a = addresses!!
-                            val amount = (btcAmount.toBigDecimal() * java.math.BigDecimal("100000000")).toLong()
-                            busy = true
-                            executor.execute {
-                                runCatching {
-                                    val client = BitcoinNetworkClient()
-                                    val utxos = client.utxos(BitcoinNetwork.MAINNET, a.btc)
-                                    val fees = client.feeRates(BitcoinNetwork.MAINNET)
-                                    val feeRate = fees.halfHour
-                                    val roughFee = 250L * feeRate
-                                    val rough = BitcoinTransactionService().prepare(
-                                        BitcoinNetwork.MAINNET, a.btc, btcRecipient, amount, roughFee, feeRate, utxos
-                                    )
-                                    val exact = BitcoinSigner.exactPlan(rough, secretStore.loadMnemonic())
-                                    BitcoinTransactionService().prepare(
-                                        BitcoinNetwork.MAINNET, a.btc, btcRecipient, amount, exact.feeSats, feeRate, utxos
-                                    )
-                                }.onSuccess { plan ->
-                                    activity.runOnUiThread {
-                                        btcReview = plan
-                                        notice = "Проверьте адрес и комиссию"
-                                        busy = false
-                                    }
-                                }.onFailure { e ->
-                                    activity.runOnUiThread {
-                                        notice = e.message ?: "Ошибка подготовки"
-                                        busy = false
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    btcReview?.let { plan ->
-                        item {
-                            ReviewCard(
-                                lines = listOf(
-                                    "Кому" to plan.to,
-                                    "Сумма" to "$btcAmount BTC",
-                                    "Комиссия" to "${plan.feeSats} sats",
-                                    "Сдача" to "${plan.changeSats} sats",
-                                    "Входов" to "${plan.inputs.size}"
-                                )
-                            )
-                        }
-                        item {
-                            DangerButton("Подтвердить и отправить") {
-                                biometric.authenticate(
-                                    onSuccess = {
-                                        executor.execute {
-                                            runCatching {
-                                                val signed = BitcoinSigner.sign(plan, secretStore.loadMnemonic())
-                                                BitcoinNetworkClient().broadcast(BitcoinNetwork.MAINNET, signed.rawHex)
-                                                signed.txId
-                                            }.onSuccess { txid ->
-                                                activity.runOnUiThread {
-                                                    notice = "Отправлено · $txid"
-                                                    btcReview = null
-                                                }
-                                            }.onFailure { e ->
-                                                activity.runOnUiThread {
-                                                    notice = e.message ?: "Ошибка отправки"
-                                                }
-                                            }
-                                        }
-                                    },
-                                    onFailure = { notice = it }
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Tab.Evm -> {
-                    item { SectionLabel("Ethereum / BNB / Sepolia") }
-                    item {
-                        NetworkChips(evmNetwork) {
-                            evmNetwork = it
-                            evmReview = null
-                            tokenDecimals = null
-                        }
-                    }
+                    item { DividerLabel("Send") }
                     item {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FilterChip(
-                                selected = sendMode == "Native",
-                                onClick = { sendMode = "Native"; evmReview = null },
-                                label = { Text("Native") },
-                                colors = chipColors()
-                            )
-                            FilterChip(
-                                selected = sendMode == "Token",
-                                onClick = { sendMode = "Token"; evmReview = null },
-                                label = { Text("ERC-20") },
-                                colors = chipColors()
-                            )
+                            listOf("BTC", "ETH", "BNB").forEach { asset ->
+                                val on = sendAsset == asset
+                                FilterChip(
+                                    selected = on,
+                                    onClick = {
+                                        sendAsset = asset
+                                        btcReview = null
+                                        evmReview = null
+                                        when (asset) {
+                                            "ETH" -> evmNetwork = Network.ETHEREUM
+                                            "BNB" -> evmNetwork = Network.BNB
+                                        }
+                                    },
+                                    label = { Text(asset, fontWeight = FontWeight.Medium) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = AccentSoft,
+                                        selectedLabelColor = Accent,
+                                        containerColor = Surface2,
+                                        labelColor = TextSecondary
+                                    ),
+                                    border = FilterChipDefaults.filterChipBorder(
+                                        enabled = true,
+                                        selected = on,
+                                        borderColor = Stroke,
+                                        selectedBorderColor = Accent.copy(alpha = 0.4f)
+                                    )
+                                )
+                            }
                         }
                     }
-                    if (sendMode == "Token") {
+
+                    if (sendAsset == "BTC") {
+                        item { VaultField(btcRecipient, { btcRecipient = it }, "Recipient address") }
+                        item { VaultField(btcAmount, { btcAmount = it }, "Amount (BTC)") }
                         item {
-                            VaultTextField(tokenContract, { tokenContract = it; tokenDecimals = null }, "Контракт токена (0x…)")
-                        }
-                        item {
-                            SecondaryButton("Проверить контракт", enabled = tokenContract.startsWith("0x") && tokenContract.length == 42) {
+                            CtaButton(
+                                if (busy) "Preparing…" else "Review transaction",
+                                enabled = addresses != null && btcRecipient.isNotBlank() &&
+                                    btcAmount.toDoubleOrNull() != null && !busy
+                            ) {
+                                val a = addresses!!
+                                val amount = (btcAmount.toBigDecimal() * java.math.BigDecimal("100000000")).toLong()
+                                busy = true
                                 executor.execute {
                                     runCatching {
-                                        tokenService.decimals(evmNetwork, tokenContract)
-                                    }.onSuccess { d ->
+                                        val client = BitcoinNetworkClient()
+                                        val utxos = client.utxos(BitcoinNetwork.MAINNET, a.btc)
+                                        val fees = client.feeRates(BitcoinNetwork.MAINNET)
+                                        val feeRate = fees.halfHour
+                                        val roughFee = 250L * feeRate
+                                        val rough = BitcoinTransactionService().prepare(
+                                            BitcoinNetwork.MAINNET, a.btc, btcRecipient, amount, roughFee, feeRate, utxos
+                                        )
+                                        val exact = BitcoinSigner.exactPlan(rough, secretStore.loadMnemonic())
+                                        BitcoinTransactionService().prepare(
+                                            BitcoinNetwork.MAINNET, a.btc, btcRecipient, amount, exact.feeSats, feeRate, utxos
+                                        )
+                                    }.onSuccess { plan ->
                                         activity.runOnUiThread {
-                                            tokenDecimals = d
-                                            notice = "Decimals: $d"
+                                            btcReview = plan
+                                            notice = "Review carefully before confirming"
+                                            busy = false
                                         }
                                     }.onFailure { e ->
                                         activity.runOnUiThread {
-                                            notice = e.message ?: "Не удалось прочитать контракт"
+                                            notice = e.message ?: "Prepare failed"
+                                            busy = false
                                         }
                                     }
                                 }
                             }
                         }
-                        tokenDecimals?.let {
-                            item { Text("Decimals: $it", color = VaultAccent2, fontSize = 13.sp) }
-                        }
-                    }
-                    item { VaultTextField(evmRecipient, { evmRecipient = it }, "Получатель (0x…)") }
-                    item {
-                        VaultTextField(
-                            evmAmount,
-                            { evmAmount = it },
-                            if (sendMode == "Token") "Сумма токена" else if (evmNetwork == Network.BNB) "BNB" else "ETH"
-                        )
-                    }
-                    if (evmNetwork != Network.SEPOLIA) {
-                        item {
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(VaultDanger.copy(alpha = 0.12f))
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Checkbox(
-                                    checked = evmMainnetAck,
-                                    onCheckedChange = { evmMainnetAck = it },
-                                    colors = CheckboxDefaults.colors(checkedColor = VaultDanger)
-                                )
-                                Text(
-                                    "Mainnet: реальные средства, операция необратима",
-                                    color = VaultText,
-                                    fontSize = 13.sp
-                                )
-                            }
-                        }
-                    }
-                    item {
-                        PrimaryButton(
-                            "Подготовить транзакцию",
-                            enabled = addresses != null &&
-                                evmRecipient.isNotBlank() &&
-                                evmAmount.toDoubleOrNull() != null &&
-                                (evmNetwork == Network.SEPOLIA || evmMainnetAck) &&
-                                (sendMode == "Native" || tokenDecimals != null) &&
-                                !busy
-                        ) {
-                            val a = addresses!!
-                            busy = true
-                            executor.execute {
-                                runCatching {
-                                    MainnetGuard.requireExplicitAcknowledgement(
-                                        evmNetwork, evmNetwork == Network.SEPOLIA || evmMainnetAck
+                        btcReview?.let { plan ->
+                            item {
+                                ReviewPanel(
+                                    listOf(
+                                        "To" to shorten(plan.to),
+                                        "Amount" to "$btcAmount BTC",
+                                        "Network fee" to "${plan.feeSats} sats",
+                                        "Change" to "${plan.changeSats} sats",
+                                        "Inputs" to "${plan.inputs.size}"
                                     )
-                                    if (sendMode == "Native") {
-                                        val amountWei = evmAmount.toBigDecimal()
-                                            .multiply(java.math.BigDecimal.TEN.pow(18)).toBigInteger()
-                                        txService.prepareNative(evmNetwork, a.eth, evmRecipient, amountWei)
-                                    } else {
-                                        val d = tokenDecimals ?: error("Сначала проверьте контракт")
-                                        val amountBase = evmAmount.toBigDecimal()
-                                            .multiply(java.math.BigDecimal.TEN.pow(d)).toBigInteger()
-                                        txService.prepareErc20(
-                                            evmNetwork, a.eth, tokenContract, evmRecipient, amountBase
-                                        )
-                                    }.also { TransactionPolicyV3.requireEvm(it) }
-                                }.onSuccess { p ->
-                                    activity.runOnUiThread {
-                                        evmReview = p
-                                        notice = "Проверьте детали перед подписью"
-                                        busy = false
-                                    }
-                                }.onFailure { e ->
-                                    activity.runOnUiThread {
-                                        notice = e.message ?: "Ошибка подготовки"
-                                        busy = false
-                                    }
-                                }
+                                )
                             }
-                        }
-                    }
-                    evmReview?.let { p ->
-                        item {
-                            val lines = buildList {
-                                add("Сеть" to "${p.network.name} · chain ${p.network.chainId}")
-                                if (p.tokenContract != null) {
-                                    add("Контракт" to p.tokenContract)
-                                    add("Получатель" to (p.recipient ?: "—"))
-                                    add("Сумма (base)" to "${p.tokenAmount}")
-                                } else {
-                                    add("Получатель" to p.to)
-                                    add("Сумма" to "$evmAmount ${if (evmNetwork == Network.BNB) "BNB" else "ETH"}")
-                                }
-                                add("Nonce / Gas" to "${p.nonce} / ${p.gasLimit}")
-                                add("Комиссия ~" to "${p.feeNative()} ${if (evmNetwork == Network.BNB) "BNB" else "ETH"}")
-                            }
-                            ReviewCard(lines)
-                        }
-                        item {
-                            DangerButton("Подтвердить · подписать · отправить") {
-                                biometric.authenticate(
-                                    onSuccess = {
-                                        executor.execute {
-                                            runCatching {
-                                                txService.signAndBroadcast(
-                                                    p, secretStore.loadMnemonic(), explicitUserConfirmation = true
-                                                )
-                                            }.onSuccess { hash ->
-                                                activity.runOnUiThread {
-                                                    notice = "Отправлено · $hash"
-                                                    evmReview = null
-                                                    evmMainnetAck = false
-                                                }
-                                            }.onFailure { e ->
-                                                activity.runOnUiThread {
-                                                    notice = e.message ?: "Ошибка подписи"
+                            item {
+                                DangerButton("Confirm & broadcast") {
+                                    biometric.authenticate(
+                                        onSuccess = {
+                                            executor.execute {
+                                                runCatching {
+                                                    val signed = BitcoinSigner.sign(plan, secretStore.loadMnemonic())
+                                                    BitcoinNetworkClient().broadcast(BitcoinNetwork.MAINNET, signed.rawHex)
+                                                    signed.txId
+                                                }.onSuccess { txid ->
+                                                    activity.runOnUiThread {
+                                                        notice = "Sent · ${shorten(txid)}"
+                                                        btcReview = null
+                                                    }
+                                                }.onFailure { e ->
+                                                    activity.runOnUiThread {
+                                                        notice = e.message ?: "Broadcast failed"
+                                                    }
                                                 }
                                             }
+                                        },
+                                        onFailure = { notice = it }
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        item {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf(Network.SEPOLIA, Network.ETHEREUM, Network.BNB).forEach { n ->
+                                    val label = when (n) {
+                                        Network.SEPOLIA -> "Sepolia"
+                                        Network.ETHEREUM -> "Ethereum"
+                                        Network.BNB -> "BNB"
+                                    }
+                                    val on = evmNetwork == n
+                                    FilterChip(
+                                        selected = on,
+                                        onClick = {
+                                            evmNetwork = n
+                                            evmReview = null
+                                            tokenDecimals = null
+                                        },
+                                        label = { Text(label) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = AccentSoft,
+                                            selectedLabelColor = Accent,
+                                            containerColor = Surface2,
+                                            labelColor = TextSecondary
+                                        ),
+                                        border = FilterChipDefaults.filterChipBorder(
+                                            enabled = true,
+                                            selected = on,
+                                            borderColor = Stroke,
+                                            selectedBorderColor = Accent.copy(alpha = 0.4f)
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                        item {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf("Native", "Token").forEach { mode ->
+                                    val on = sendMode == mode
+                                    FilterChip(
+                                        selected = on,
+                                        onClick = { sendMode = mode; evmReview = null },
+                                        label = { Text(if (mode == "Native") "Native" else "ERC-20") },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = AccentSoft,
+                                            selectedLabelColor = Accent,
+                                            containerColor = Surface2,
+                                            labelColor = TextSecondary
+                                        ),
+                                        border = FilterChipDefaults.filterChipBorder(
+                                            enabled = true,
+                                            selected = on,
+                                            borderColor = Stroke,
+                                            selectedBorderColor = Accent.copy(alpha = 0.4f)
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                        if (sendMode == "Token") {
+                            item { VaultField(tokenContract, { tokenContract = it; tokenDecimals = null }, "Token contract") }
+                            item {
+                                GhostButton(
+                                    "Detect decimals",
+                                    enabled = tokenContract.length == 42
+                                ) {
+                                    executor.execute {
+                                        runCatching { tokenService.decimals(evmNetwork, tokenContract) }
+                                            .onSuccess { d ->
+                                                activity.runOnUiThread {
+                                                    tokenDecimals = d
+                                                    notice = "Decimals: $d"
+                                                }
+                                            }
+                                            .onFailure { e ->
+                                                activity.runOnUiThread {
+                                                    notice = e.message ?: "Contract read failed"
+                                                }
+                                            }
+                                    }
+                                }
+                            }
+                            tokenDecimals?.let {
+                                item {
+                                    Text("Decimals · $it", color = Success, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                }
+                            }
+                        }
+                        item { VaultField(evmRecipient, { evmRecipient = it }, "Recipient") }
+                        item {
+                            VaultField(
+                                evmAmount,
+                                { evmAmount = it },
+                                if (sendMode == "Token") "Token amount" else "Amount"
+                            )
+                        }
+                        if (evmNetwork != Network.SEPOLIA) {
+                            item {
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(Danger.copy(alpha = 0.1f))
+                                        .border(1.dp, Danger.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+                                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Checkbox(
+                                        checked = evmMainnetAck,
+                                        onCheckedChange = { evmMainnetAck = it },
+                                        colors = CheckboxDefaults.colors(
+                                            checkedColor = Danger,
+                                            uncheckedColor = TextTertiary
+                                        )
+                                    )
+                                    Text(
+                                        "Mainnet · real funds · irreversible",
+                                        color = TextPrimary,
+                                        fontSize = 13.sp
+                                    )
+                                }
+                            }
+                        }
+                        item {
+                            CtaButton(
+                                if (busy) "Preparing…" else "Review transaction",
+                                enabled = addresses != null &&
+                                    evmRecipient.isNotBlank() &&
+                                    evmAmount.toDoubleOrNull() != null &&
+                                    (evmNetwork == Network.SEPOLIA || evmMainnetAck) &&
+                                    (sendMode == "Native" || tokenDecimals != null) &&
+                                    !busy
+                            ) {
+                                val a = addresses!!
+                                busy = true
+                                executor.execute {
+                                    runCatching {
+                                        MainnetGuard.requireExplicitAcknowledgement(
+                                            evmNetwork, evmNetwork == Network.SEPOLIA || evmMainnetAck
+                                        )
+                                        if (sendMode == "Native") {
+                                            val amountWei = evmAmount.toBigDecimal()
+                                                .multiply(java.math.BigDecimal.TEN.pow(18)).toBigInteger()
+                                            txService.prepareNative(evmNetwork, a.eth, evmRecipient, amountWei)
+                                        } else {
+                                            val d = tokenDecimals ?: error("Detect decimals first")
+                                            val amountBase = evmAmount.toBigDecimal()
+                                                .multiply(java.math.BigDecimal.TEN.pow(d)).toBigInteger()
+                                            txService.prepareErc20(
+                                                evmNetwork, a.eth, tokenContract, evmRecipient, amountBase
+                                            )
+                                        }.also { TransactionPolicyV3.requireEvm(it) }
+                                    }.onSuccess { p ->
+                                        activity.runOnUiThread {
+                                            evmReview = p
+                                            notice = "Review carefully before confirming"
+                                            busy = false
                                         }
-                                    },
-                                    onFailure = { notice = it }
-                                )
+                                    }.onFailure { e ->
+                                        activity.runOnUiThread {
+                                            notice = e.message ?: "Prepare failed"
+                                            busy = false
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        evmReview?.let { p ->
+                            item {
+                                val lines = buildList {
+                                    add("Network" to "${p.network.name} · ${p.network.chainId}")
+                                    if (p.tokenContract != null) {
+                                        add("Contract" to shorten(p.tokenContract))
+                                        add("Recipient" to shorten(p.recipient ?: "—"))
+                                        add("Amount" to "${p.tokenAmount}")
+                                    } else {
+                                        add("Recipient" to shorten(p.to))
+                                        add("Amount" to "$evmAmount")
+                                    }
+                                    add("Nonce / gas" to "${p.nonce} / ${p.gasLimit}")
+                                    add("Est. fee" to "${p.feeNative()}")
+                                }
+                                ReviewPanel(lines)
+                            }
+                            item {
+                                DangerButton("Confirm & broadcast") {
+                                    biometric.authenticate(
+                                        onSuccess = {
+                                            executor.execute {
+                                                runCatching {
+                                                    txService.signAndBroadcast(
+                                                        p, secretStore.loadMnemonic(), explicitUserConfirmation = true
+                                                    )
+                                                }.onSuccess { hash ->
+                                                    activity.runOnUiThread {
+                                                        notice = "Sent · ${shorten(hash)}"
+                                                        evmReview = null
+                                                        evmMainnetAck = false
+                                                    }
+                                                }.onFailure { e ->
+                                                    activity.runOnUiThread {
+                                                        notice = e.message ?: "Sign failed"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        onFailure = { notice = it }
+                                    )
+                                }
                             }
                         }
                     }
                 }
 
                 Tab.Settings -> {
-                    item { SectionLabel("Безопасность") }
+                    item { DividerLabel("Security") }
                     item {
-                        SettingsTile(
-                            Icons.Default.Fingerprint,
-                            "Показать seed",
-                            "Только после биометрии / PIN"
-                        ) {
+                        SettingsRow(Icons.Default.Fingerprint, "Reveal seed phrase", "Requires biometrics") {
                             if (!secretStore.hasWallet()) {
-                                notice = "Кошелёк не найден"
+                                notice = "No wallet found"
                             } else {
                                 biometric.authenticate(
                                     onSuccess = {
                                         showSeed = true
                                         mnemonic = secretStore.loadMnemonic()
-                                        tab = Tab.Portfolio
+                                        tab = Tab.Home
                                     },
                                     onFailure = { notice = it }
                                 )
@@ -570,25 +627,18 @@ private fun CryptoVaultApp(activity: FragmentActivity) {
                         }
                     }
                     item {
-                        SettingsTile(
-                            Icons.Default.Lock,
-                            "Защита",
-                            "Keystore · FLAG_SECURE · без backup"
-                        ) {}
+                        SettingsRow(Icons.Default.Shield, "Protection", "Keystore · FLAG_SECURE · no cloud backup") {}
                     }
                     item {
-                        SettingsTile(
-                            Icons.Default.Info,
-                            "Версия",
-                            "CryptoVault 1.0.0 · self-custody"
-                        ) {}
+                        SettingsRow(Icons.Default.Info, "About", "CryptoVault 1.0.0 · self-custody") {}
                     }
                     item {
                         Text(
                             RealFundsNotice.TEXT,
-                            color = VaultMuted,
+                            color = TextTertiary,
                             fontSize = 12.sp,
-                            lineHeight = 18.sp
+                            lineHeight = 18.sp,
+                            modifier = Modifier.padding(top = 8.dp)
                         )
                     }
                 }
@@ -597,175 +647,241 @@ private fun CryptoVaultApp(activity: FragmentActivity) {
     }
 }
 
-@Composable
-private fun chipColors() = FilterChipDefaults.filterChipColors(
-    selectedContainerColor = VaultAccent.copy(alpha = 0.2f),
-    selectedLabelColor = VaultAccent,
-    containerColor = VaultCard,
-    labelColor = VaultMuted
-)
+private fun shorten(value: String): String {
+    if (value.length <= 16) return value
+    return value.take(8) + "…" + value.takeLast(6)
+}
 
 @Composable
-private fun SectionLabel(text: String) {
+private fun TopBar() {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Brush.linearGradient(listOf(Accent, Color(0xFF7B6CFF)))),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.Shield, null, tint = Color.White, modifier = Modifier.size(18.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text("CryptoVault", fontWeight = FontWeight.SemiBold, fontSize = 18.sp, color = TextPrimary)
+            Text("Self-custody wallet", color = TextTertiary, fontSize = 12.sp)
+        }
+        Box(
+            Modifier
+                .clip(RoundedCornerShape(20.dp))
+                .background(Success.copy(alpha = 0.12f))
+                .padding(horizontal = 10.dp, vertical = 5.dp)
+        ) {
+            Text("Local", color = Success, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        }
+    }
+}
+
+@Composable
+private fun OnboardingCard() {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(
+                Brush.verticalGradient(listOf(Color(0xFF152038), Color(0xFF0C1220)))
+            )
+            .border(1.dp, Stroke.copy(alpha = 0.5f), RoundedCornerShape(24.dp))
+            .padding(24.dp)
+    ) {
+        Text("Your keys,\nstay on device", fontWeight = FontWeight.Bold, fontSize = 26.sp, color = TextPrimary, lineHeight = 32.sp)
+        Spacer(Modifier.height(12.dp))
+        Text(
+            "Create a wallet or restore from a seed phrase. Signing happens locally — seed never leaves the phone.",
+            color = TextSecondary,
+            fontSize = 14.sp,
+            lineHeight = 21.sp
+        )
+    }
+}
+
+@Composable
+private fun PortfolioHeader() {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(
+                Brush.verticalGradient(listOf(Color(0xFF142038), Color(0xFF0B101C)))
+            )
+            .border(1.dp, Stroke.copy(alpha = 0.45f), RoundedCornerShape(24.dp))
+            .padding(22.dp)
+    ) {
+        Text("PORTFOLIO", color = TextTertiary, fontSize = 11.sp, fontWeight = FontWeight.Medium, letterSpacing = 1.2.sp)
+        Spacer(Modifier.height(8.dp))
+        Text("Ready", fontWeight = FontWeight.Bold, fontSize = 28.sp, color = TextPrimary)
+        Spacer(Modifier.height(6.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(6.dp).clip(CircleShape).background(Success))
+            Spacer(Modifier.width(8.dp))
+            Text("Encrypted with Android Keystore", color = TextSecondary, fontSize = 13.sp)
+        }
+    }
+}
+
+@Composable
+private fun DividerLabel(text: String) {
     Text(
-        text,
-        color = VaultMuted,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Medium,
-        letterSpacing = 0.6.sp,
-        modifier = Modifier.padding(top = 4.dp)
+        text.uppercase(),
+        color = TextTertiary,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = 1.1.sp,
+        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
     )
 }
 
 @Composable
-private fun HeroCard(title: String, subtitle: String) {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(Brush.linearGradient(listOf(Color(0xFF1B2550), Color(0xFF12203A))))
-            .padding(20.dp)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(title, color = VaultText, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-            Text(subtitle, color = VaultMuted, fontSize = 14.sp, lineHeight = 20.sp)
-        }
-    }
-}
-
-@Composable
-private fun BalanceHero() {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(Brush.linearGradient(listOf(Color(0xFF1A2A4A), Color(0xFF0F1C33))))
-            .padding(22.dp)
-    ) {
-        Column {
-            Text("Кошелёк готов", color = VaultMuted, fontSize = 13.sp)
-            Spacer(Modifier.height(6.dp))
-            Text("Self-custody", color = VaultText, fontWeight = FontWeight.Bold, fontSize = 26.sp)
-            Spacer(Modifier.height(8.dp))
-            Text("Ключи зашифрованы на устройстве", color = VaultAccent2, fontSize = 13.sp)
-        }
-    }
-}
-
-@Composable
-private fun AssetRow(symbol: String, name: String, address: String, accent: Color) {
+private fun AssetTile(symbol: String, name: String, address: String, accent: Color, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(VaultCard)
+            .clip(RoundedCornerShape(18.dp))
+            .background(Surface2)
+            .border(1.dp, Stroke.copy(alpha = 0.4f), RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick)
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             Modifier
-                .size(42.dp)
+                .size(44.dp)
                 .clip(CircleShape)
-                .background(accent.copy(alpha = 0.2f)),
+                .background(accent.copy(alpha = 0.15f)),
             contentAlignment = Alignment.Center
         ) {
-            Text(symbol.take(1), color = accent, fontWeight = FontWeight.Bold)
+            Text(symbol.take(1), color = accent, fontWeight = FontWeight.Bold, fontSize = 16.sp)
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(symbol, color = VaultText, fontWeight = FontWeight.SemiBold)
-            Text(name, color = VaultMuted, fontSize = 12.sp)
+            Text(symbol, color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+            Text(name, color = TextTertiary, fontSize = 12.sp)
+            Text(
+                shorten(address),
+                color = TextSecondary,
+                fontSize = 12.sp,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Icon(Icons.Default.ChevronRight, null, tint = TextTertiary, modifier = Modifier.size(20.dp))
+    }
+}
+
+@Composable
+private fun AddressPanel(title: String, address: String, accent: Color) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(Surface2)
+            .border(1.dp, Stroke.copy(alpha = 0.4f), RoundedCornerShape(18.dp))
+            .padding(16.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(8.dp).clip(CircleShape).background(accent))
+            Spacer(Modifier.width(8.dp))
+            Text(title, color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+        }
+        Spacer(Modifier.height(12.dp))
+        SelectionContainer {
             Text(
                 address,
-                color = VaultMuted,
-                fontSize = 11.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                fontFamily = FontFamily.Monospace
+                color = TextSecondary,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 13.sp,
+                lineHeight = 20.sp
             )
         }
     }
 }
 
 @Composable
-private fun AddressCard(title: String, address: String, accent: Color) {
+private fun ReviewPanel(lines: List<Pair<String, String>>) {
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(VaultCard)
-            .padding(16.dp)
-    ) {
-        Text(title, color = accent, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-        Spacer(Modifier.height(8.dp))
-        SelectionContainer {
-            Text(address, color = VaultText, fontFamily = FontFamily.Monospace, fontSize = 13.sp, lineHeight = 18.sp)
-        }
-    }
-}
-
-@Composable
-private fun ReviewCard(lines: List<Pair<String, String>>) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(VaultCard)
-            .border(1.dp, VaultAccent.copy(alpha = 0.25f), RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(18.dp))
+            .background(Surface2)
+            .border(1.dp, Accent.copy(alpha = 0.35f), RoundedCornerShape(18.dp))
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Проверка перед отправкой", color = VaultAccent, fontWeight = FontWeight.SemiBold)
+        Text("Transaction review", color = Accent, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
         lines.forEach { (k, v) ->
             Row(Modifier.fillMaxWidth()) {
-                Text(k, color = VaultMuted, fontSize = 13.sp, modifier = Modifier.width(100.dp))
+                Text(k, color = TextTertiary, fontSize = 13.sp, modifier = Modifier.width(96.dp))
                 Text(
                     v,
-                    color = VaultText,
+                    color = TextPrimary,
                     fontSize = 13.sp,
                     fontFamily = FontFamily.Monospace,
                     modifier = Modifier.weight(1f)
                 )
+            }
+            if (k != lines.last().first) {
+                HorizontalDivider(color = Stroke.copy(alpha = 0.5f), thickness = 0.5.dp)
             }
         }
     }
 }
 
 @Composable
-private fun WarningCard(text: String) {
+private fun AlertBanner(text: String) {
     Text(
         text,
-        color = Color(0xFFFFD166),
+        color = Warning,
         fontSize = 13.sp,
+        lineHeight = 18.sp,
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFFFFD166).copy(alpha = 0.12f))
+            .clip(RoundedCornerShape(14.dp))
+            .background(Warning.copy(alpha = 0.1f))
+            .border(1.dp, Warning.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
             .padding(14.dp)
     )
 }
 
 @Composable
-private fun SeedBox(mnemonic: String) {
+private fun SeedPanel(mnemonic: String) {
     SelectionContainer {
         Text(
-            mnemonic,
-            color = VaultText,
-            fontFamily = FontFamily.Monospace,
-            fontSize = 14.sp,
-            lineHeight = 22.sp,
+            buildAnnotatedString {
+                mnemonic.split(" ").forEachIndexed { i, w ->
+                    withStyle(SpanStyle(color = TextTertiary, fontSize = 11.sp)) {
+                        append("${i + 1}. ")
+                    }
+                    withStyle(SpanStyle(color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)) {
+                        append(w)
+                    }
+                    if (i < mnemonic.split(" ").lastIndex) append("  ")
+                }
+            },
+            lineHeight = 24.sp,
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color(0xFF0D1525))
-                .border(1.dp, VaultDanger.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
-                .padding(14.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color(0xFF0A0E16))
+                .border(1.dp, Danger.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+                .padding(16.dp)
         )
     }
 }
 
 @Composable
-private fun VaultTextField(
+private fun VaultField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,
@@ -777,49 +893,54 @@ private fun VaultTextField(
         label = { Text(label) },
         modifier = Modifier.fillMaxWidth(),
         singleLine = singleLine,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = VaultAccent,
-            unfocusedBorderColor = Color(0xFF2A3548),
-            focusedLabelColor = VaultAccent,
-            unfocusedLabelColor = VaultMuted,
-            cursorColor = VaultAccent,
-            focusedTextColor = VaultText,
-            unfocusedTextColor = VaultText,
-            focusedContainerColor = VaultCard,
-            unfocusedContainerColor = VaultCard
+            focusedBorderColor = Accent,
+            unfocusedBorderColor = Stroke,
+            focusedLabelColor = Accent,
+            unfocusedLabelColor = TextTertiary,
+            cursorColor = Accent,
+            focusedTextColor = TextPrimary,
+            unfocusedTextColor = TextPrimary,
+            focusedContainerColor = Surface2,
+            unfocusedContainerColor = Surface2
         )
     )
 }
 
 @Composable
-private fun PrimaryButton(text: String, enabled: Boolean = true, onClick: () -> Unit) {
+private fun CtaButton(text: String, enabled: Boolean = true, onClick: () -> Unit) {
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.fillMaxWidth().height(52.dp),
-        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth().height(54.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = VaultAccent,
+            containerColor = Accent,
             contentColor = Color.White,
-            disabledContainerColor = VaultAccent.copy(alpha = 0.3f)
-        )
+            disabledContainerColor = Accent.copy(alpha = 0.25f),
+            disabledContentColor = Color.White.copy(alpha = 0.5f)
+        ),
+        elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
     ) {
-        Text(text, fontWeight = FontWeight.SemiBold)
+        Text(text, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
     }
 }
 
 @Composable
-private fun SecondaryButton(text: String, enabled: Boolean = true, onClick: () -> Unit) {
+private fun GhostButton(text: String, enabled: Boolean = true, onClick: () -> Unit) {
     OutlinedButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.fillMaxWidth().height(52.dp),
-        shape = RoundedCornerShape(14.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = VaultText),
-        border = BorderStroke(1.dp, Color(0xFF2A3548))
+        modifier = Modifier.fillMaxWidth().height(54.dp),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, Stroke),
+        colors = ButtonDefaults.outlinedButtonColors(
+            contentColor = TextPrimary,
+            disabledContentColor = TextTertiary
+        )
     ) {
-        Text(text, fontWeight = FontWeight.Medium)
+        Text(text, fontWeight = FontWeight.Medium, fontSize = 15.sp)
     }
 }
 
@@ -827,50 +948,41 @@ private fun SecondaryButton(text: String, enabled: Boolean = true, onClick: () -
 private fun DangerButton(text: String, onClick: () -> Unit) {
     Button(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth().height(52.dp),
-        shape = RoundedCornerShape(14.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = VaultDanger, contentColor = Color.White)
+        modifier = Modifier.fillMaxWidth().height(54.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = Danger, contentColor = Color.White),
+        elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
     ) {
-        Text(text, fontWeight = FontWeight.Bold)
+        Text(text, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
     }
 }
 
 @Composable
-private fun NetworkChips(selected: Network, onSelect: (Network) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf(Network.SEPOLIA, Network.ETHEREUM, Network.BNB).forEach { n ->
-            val label = when (n) {
-                Network.SEPOLIA -> "Sepolia"
-                Network.ETHEREUM -> "Ethereum"
-                Network.BNB -> "BNB"
-            }
-            FilterChip(
-                selected = selected == n,
-                onClick = { onSelect(n) },
-                label = { Text(label) },
-                colors = chipColors()
-            )
-        }
-    }
-}
-
-@Composable
-private fun SettingsTile(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+private fun SettingsRow(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(VaultCard)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Surface2)
+            .border(1.dp, Stroke.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, null, tint = VaultAccent, modifier = Modifier.size(22.dp))
+        Box(
+            Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(AccentSoft),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, null, tint = Accent, modifier = Modifier.size(20.dp))
+        }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, color = VaultText, fontWeight = FontWeight.Medium)
-            Text(subtitle, color = VaultMuted, fontSize = 12.sp)
+            Text(title, color = TextPrimary, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+            Text(subtitle, color = TextTertiary, fontSize = 12.sp)
         }
-        Icon(Icons.Default.ChevronRight, null, tint = VaultMuted)
+        Icon(Icons.Default.ChevronRight, null, tint = TextTertiary, modifier = Modifier.size(18.dp))
     }
 }
